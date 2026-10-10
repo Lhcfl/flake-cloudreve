@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-26.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Set up Cachix
+        uses: cachix/cachix-action@v17
+        with:
+          name: lhcfl
+          # Set the CACHIX_AUTH_TOKEN repository secret to push build results.
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
+
+      - name: Build cloudreve-bin
+        run: nix build -L .#cloudreve-bin
+
+      - name: Build cloudreve (from source)
+        run: |
+          set -o pipefail
+          nix build -L .#cloudreve 2>&1 | tee source-build.log
+
+      - name: Report hash mismatches
+        if: failure()
+        run: |
+          {
+            echo "### Hash mismatches"
+            echo '```'
+            grep -aE 'got: +sha256-|specified: +sha256-|hash mismatch' source-build.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -aE 'got: +sha256-|specified: +sha256-' source-build.log || true

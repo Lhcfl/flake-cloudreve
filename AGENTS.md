@@ -11,10 +11,13 @@ systems.
 
 Primary deliverables:
 
-- `packages.<system>.cloudreve` — the Cloudreve binary.
+- `packages.<system>.cloudreve` — Cloudreve built from source (Go backend + web
+  frontend). This is the **default** package.
+- `packages.<system>.cloudreve-bin` — Cloudreve repackaged from the official
+  GitHub release binary.
 - `nixosModules.default` / `nixosModules.cloudreve` — the `services.cloudreve`
   NixOS module.
-- `overlays.default` — adds `pkgs.cloudreve`.
+- `overlays.default` — adds `pkgs.cloudreve` and `pkgs.cloudreve-bin`.
 
 ## Hard rules
 
@@ -27,20 +30,24 @@ Database passwords (and similar secrets) must go through
 ## Layout
 
 ```
-flake.nix                 flake-parts entry point: packages, overlay, nixosModules
-packages/cloudreve.nix    callPackage function for the Cloudreve derivation
-modules/cloudreve.nix     the actual NixOS module
-README.md                 English documentation
-README.zh_CN.md           Chinese documentation
+flake.nix                  flake-parts entry point: packages, overlay, nixosModules
+packages/cloudreve.nix     from-source build (default)
+packages/cloudreve-bin.nix prebuilt release repackaging
+modules/cloudreve.nix      the actual NixOS module
+.github/workflows/ci.yml   GitHub Actions build + Cachix
+README.md                  English documentation
+README.zh_CN.md            Chinese documentation
+LICENSE                    MIT license (packaging code)
 ```
 
 ## Conventions
 
-- Keep `packages.<system>.cloudreve` as the canonical package name; keep
-  `packages.<system>.default` pointing at it.
+- Keep `packages.<system>.cloudreve` as the from-source build and
+  `packages.<system>.cloudreve-bin` as the prebuilt release. Keep
+  `packages.<system>.default` pointing at `cloudreve`.
 - The NixOS module's `package` option defaults to
-  `pkgs.callPackage ../packages/cloudreve.nix { }` so the module works without the
-  overlay.
+  `pkgs.callPackage ../packages/cloudreve.nix { }` (the from-source package) so
+  the module works without the overlay.
 - `services.cloudreve.settings` is deliberately `types.attrsOf types.str`, with
   flat `"Section.Key"` keys (e.g. `"System.Listen" = ":5212"`). Do not change
   this to a nested type without updating the READMEs and the option
@@ -52,10 +59,41 @@ README.zh_CN.md           Chinese documentation
 - The `database.passwordFile` secret is injected at runtime through the
   `CR_CONF_Database__Password` environment variable (Cloudreve accepts `__` as
   a section/key separator, which keeps it a valid systemd env var name).
-- The packaged binary is a prebuilt upstream release, so leave
+- `cloudreve-bin` is a prebuilt upstream release, so leave
   `sourceProvenance = [ lib.sourceTypes.binaryNativeCode ]` and do not add a
-  `buildGoModule` build unless the release process changes.
+  `buildGoModule` build there.
+- `cloudreve` builds the frontend from the `cloudreve/frontend` submodule
+  revision pinned by the Cloudreve tag. When bumping the version, update
+  `frontendRev` to the submodule revision, otherwise the embedded frontend will
+  not match the backend.
 - Keep `README.md` and `README.zh_CN.md` content in sync when changing options.
+
+## Fixed-output hashes for the from-source build
+
+The `cloudreve` package depends on fixed-output derivations whose hashes cannot
+be computed without first fetching or building:
+
+- `fetchFromGitHub` hashes for the Cloudreve and frontend sources — obtainable
+  with `nix-prefetch-url --unpack` (convert with
+  `nix-hash --to-sri --type sha256 <base32>`).
+- `fetchYarnDeps` hash (`offlineCache`) — only known after downloading the npm
+  tarballs once.
+- `vendorHash` — only known after `go mod vendor` runs once.
+
+Until these are filled in, the package uses `lib.fakeHash` and the build fails
+with a hash mismatch. CI prints the expected `got: sha256-...` values to the job
+summary. The intended workflow is:
+
+1. Push with the placeholder hashes.
+2. Read the expected hashes from the CI job summary / logs.
+3. Fill them into `packages/cloudreve.nix` and push again.
+
+`fetchYarnDeps` uses a lockfile with `registry.npmjs.org` URLs rewritten to
+`registry.yarnpkg.com` (see `patchedYarnLock`), because the Nix build sandbox
+cannot reliably reach `registry.npmjs.org`. Keep that rewrite when touching the
+frontend dependency handling, and keep the lockfile used for the offline cache
+identical to the one used during the build (the assets derivation copies it in
+`postPatch`, and `yarnConfigHook` diffs them).
 
 ## Formatting
 
@@ -79,11 +117,13 @@ Evaluate the flake without building everything:
 $ nix flake check --no-build
 ```
 
-Build the package for the current system:
+Build the packages (the binary package is quick; the from-source package is
+heavy):
 
 ```console
+$ nix build .#cloudreve-bin --no-link
 $ nix build .#cloudreve --no-link
-$ nix run .#cloudreve -- server --help
+$ nix run .#cloudreve-bin -- server --help
 ```
 
 Evaluate the NixOS module (evaluates assertions and the whole config):
@@ -119,21 +159,30 @@ $ nix eval --impure --raw --expr '... in builtins.toString ev.config.systemd.uni
 $ nix-store -r <that .drv>
 ```
 
+## CI / Cachix
+
+`.github/workflows/ci.yml` builds both packages on `x86_64-linux` and
+`aarch64-linux` and pushes results to the `lhcfl` Cachix cache via
+`cachix/cachix-action`. Add the repository secret `CACHIX_AUTH_TOKEN` (a Cachix
+auth token with write access to `lhcfl`) to enable pushing; without it, pushes
+are skipped.
+
+The flake's `nixConfig` recommends the `nix-community` and `lhcfl` caches as
+`extra-substituters` with their public keys. Keep those in sync with the cache
+name used by CI.
+
 ## Updating Cloudreve
 
 1. Choose a new tag at <https://github.com/cloudreve/Cloudreve/releases>.
-2. Update `version` and every entry in `sources` in `packages/cloudreve.nix`.
-3. Hashes are sha256 of the release tarballs. Get them from the release's
-   `checksums.txt` or with:
+2. `packages/cloudreve-bin.nix`: update `version` and every entry in `sources`.
+3. `packages/cloudreve.nix`: update `version`, `rev`, `commit`, `frontendRev`
+   and the fixed-output hashes.
+4. Re-run `nix build .#cloudreve-bin`, `nix build .#cloudreve` and the module
+   evaluation above.
 
-```console
-$ nix store prefetch-file --json --hash-type sha256 \
-    https://github.com/cloudreve/cloudreve/releases/download/<version>/cloudreve_<version>_<asset>.tar.gz
-```
-
-   Use the `hash` field (SRI) in `sources`.
-
-4. Re-run `nix build .#cloudreve` and the module evaluation above.
+Source hashes can be recomputed with `nix-prefetch-url --unpack` on the archive
+URLs; release hashes come from the release's `checksums.txt` or
+`nix store prefetch-file`.
 
 ## Upstream references
 

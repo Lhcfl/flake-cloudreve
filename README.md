@@ -7,17 +7,24 @@ and exporting all supported systems.
 Cloudreve is a self-hosted file management and sharing system that supports
 multiple storage backends (local disk, S3, OneDrive, Google Drive, ...).
 
+This flake provides **two** packages:
+
+- `cloudreve` — built from source (Go backend + web frontend), and the default.
+- `cloudreve-bin` — repackaged from the official GitHub release tarball.
+
 ## What this flake exports
 
 | Output | Description |
 | --- | --- |
-| `packages.<system>.cloudreve` | The Cloudreve server binary (repackaged upstream release). |
+| `packages.<system>.cloudreve` | Cloudreve built from source. **Default.** |
+| `packages.<system>.cloudreve-bin` | Cloudreve repackaged from the upstream release binary. |
 | `packages.<system>.default` | Alias for `packages.<system>.cloudreve`. |
 | `nixosModules.default`, `nixosModules.cloudreve` | NixOS module exposing `services.cloudreve`. |
-| `overlays.default` | Adds `pkgs.cloudreve` to nixpkgs. |
+| `overlays.default` | Adds `pkgs.cloudreve` and `pkgs.cloudreve-bin` to nixpkgs. |
 
 Supported systems: `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`,
-`aarch64-darwin`.
+`aarch64-darwin`. The from-source package builds on Linux and macOS; the binary
+package covers the systems for which upstream publishes a release.
 
 ## Usage with NixOS
 
@@ -44,13 +51,15 @@ Add the flake as an input and import the module:
 }
 ```
 
-The module provides its own default `package`, so importing it is enough. If
-you prefer to use the package from `pkgs`, add the overlay:
+The module defaults to the from-source package. To use the prebuilt release
+binary instead, add the overlay and select it:
 
 ```nix
 {
   nixpkgs.overlays = [ cloudreve.overlays.default ];
-  services.cloudreve.package = pkgs.cloudreve; # optional, this is the default anyway
+
+  # The module imports its own default, so point it at the overlay package.
+  services.cloudreve.package = pkgs.cloudreve-bin;
 }
 ```
 
@@ -128,7 +137,8 @@ services.cloudreve = {
 The full option tree lives in `modules/cloudreve.nix`. The highlights:
 
 - `services.cloudreve.enable` — enable the service.
-- `services.cloudreve.package` — the Cloudreve package to use.
+- `services.cloudreve.package` — the Cloudreve package to use (defaults to the
+  from-source package).
 - `services.cloudreve.user` / `.group` — service account (default `cloudreve`).
 - `services.cloudreve.stateDir` — data directory (default `/var/lib/cloudreve`).
 - `services.cloudreve.settings` — free-form `conf.ini` values as an attrset of
@@ -157,39 +167,103 @@ and never written to the world-readable Nix store.
 Refer to the upstream configuration reference for all INI keys:
 <https://docs.cloudreve.org/zh/overview/configure>.
 
-## Using the package directly
+## Using the packages directly
 
 ```console
-$ nix build .#cloudreve
+$ nix build .#cloudreve       # from source (default)
+$ nix build .#cloudreve-bin   # prebuilt release
+
 $ ./result/bin/cloudreve --help
 ```
+
+### Building from source
+
+`cloudreve` builds the Go backend with `buildGoModule` and builds the web
+frontend (the `cloudreve/frontend` submodule pinned by the release tag) with
+Yarn and Vite, then embeds the resulting `assets.zip`. This is a heavy build
+(`~2000` npm packages plus the full Go dependency tree), so expect the first
+build to take a while and use several GB of disk. The result is cached
+afterwards.
+
+The frontend revision is pinned in `packages/cloudreve.nix` and must match the
+`assets` submodule revision of the Cloudreve tag.
+
+## Binary cache (Cachix)
+
+The flake recommends the `nix-community` and `lhcfl` Cachix caches through
+`nixConfig` (`extra-substituters` / `extra-trusted-public-keys`). They are used
+automatically when the consumer enables `accept-flake-config = true`.
+
+CI builds both packages and pushes them to the `lhcfl` cache. To consume it
+explicitly:
+
+```console
+$ cachix use lhcfl
+```
+
+or without Cachix:
+
+```console
+$ nix build .#cloudreve \
+    --extra-substituters https://nix-community.cachix.org \
+    --extra-substituters https://lhcfl.cachix.org \
+    --extra-trusted-public-keys "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=" \
+    --extra-trusted-public-keys "lhcfl.cachix.org-1:hf4kin1zCbaeLWygZlwhYms/oqB0I8/8ZZsPkezpFms="
+```
+
+To let CI push to the `lhcfl` cache, add the repository secret
+`CACHIX_AUTH_TOKEN` — a Cachix auth token with write access to `lhcfl`. Without
+it, CI only pulls from the cache and does not push.
+
+The cache name used by CI is set directly in `.github/workflows/ci.yml`.
+
+## CI
+
+`.github/workflows/ci.yml` runs on pushes, pull requests and manual dispatch.
+For `x86_64-linux` and `aarch64-linux` it builds `cloudreve-bin` and the
+from-source `cloudreve`, pushing everything to the Cachix cache.
+
+The from-source package's fixed-output hashes (`fetchYarnDeps` and
+`vendorHash` in `packages/cloudreve.nix`) are discovered from the CI logs: when
+a build fails with a hash mismatch, the workflow writes the expected
+`got: sha256-...` value to the job summary. Copy it into the corresponding
+field and push again. After at most two iterations the source build passes and
+is cached.
 
 ## Updating Cloudreve
 
 1. Pick a new tag from <https://github.com/cloudreve/Cloudreve/releases>.
-2. Update `version` and the `sources` hashes in `packages/cloudreve.nix`.
-3. Verify with `nix build .#cloudreve`.
+2. `packages/cloudreve-bin.nix`: update `version` and the `sources` hashes.
+3. `packages/cloudreve.nix`: update `version`, `rev`, `commit`, `frontendRev`
+   (the `assets` submodule revision) and the fixed-output hashes.
+4. Verify with `nix build .#cloudreve-bin` and `nix build .#cloudreve`.
 
-The sha256 hashes are published in the release's `checksums.txt` and can be
-converted to SRI form, for example:
+The release hashes are published in the release's `checksums.txt`; the source
+hashes can be recomputed with:
 
 ```console
-$ curl -sL https://github.com/cloudreve/cloudreve/releases/download/<version>/checksums.txt
 $ nix store prefetch-file --json --hash-type sha256 \
-    https://github.com/cloudreve/cloudreve/releases/download/<version>/cloudreve_<version>_linux_amd64.tar.gz
+    https://github.com/cloudreve/Cloudreve/releases/download/<version>/cloudreve_<version>_linux_amd64.tar.gz
+$ nix-prefetch-url --unpack \
+    https://github.com/cloudreve/Cloudreve/archive/refs/tags/<version>.tar.gz
+$ nix-prefetch-url --unpack \
+    https://github.com/cloudreve/frontend/archive/<frontend-rev>.tar.gz
 ```
 
 ## Repository layout
 
 ```
 flake.nix                 # flake-parts entry point: packages, overlay, modules
-packages/cloudreve.nix    # Cloudreve derivation
+packages/cloudreve.nix    # from-source build (default)
+packages/cloudreve-bin.nix # prebuilt release repackaging
 modules/cloudreve.nix     # NixOS module
+.github/workflows/ci.yml  # GitHub Actions build + Cachix
 AGENTS.md                 # instructions for automated agents
 ```
 
 ## License
 
-The packaging code in this repository is provided as-is. Cloudreve itself is
-licensed under the GNU GPL v3 (see the upstream project). The packaged binaries
-are unmodified upstream release artifacts.
+The packaging code in this repository is licensed under the MIT License (see
+[`LICENSE`](./LICENSE)). Cloudreve itself is licensed under the GNU GPL v3 (see
+the upstream project). The `cloudreve-bin` package redistributes unmodified
+upstream release artifacts.

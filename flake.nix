@@ -3,9 +3,21 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-  
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
+  };
+
+  # Recommended binary caches. Honoured when the consumer enables
+  # `accept-flake-config = true`.
+  nixConfig = {
+    extra-substituters = [
+      "https://nix-community.cachix.org"
+      "https://lhcfl.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      "lhcfl.cachix.org-1:hf4kin1zCbaeLWygZlwhYms/oqB0I8/8ZZsPkezpFms="
+    ];
   };
 
   outputs =
@@ -23,6 +35,7 @@
         {
           packages = {
             cloudreve = pkgs.callPackage ./packages/cloudreve.nix { };
+            cloudreve-bin = pkgs.callPackage ./packages/cloudreve-bin.nix { };
             default = self'.packages.cloudreve;
           };
 
@@ -39,6 +52,7 @@
       flake = {
         overlays.default = final: _prev: {
           cloudreve = final.callPackage ./packages/cloudreve.nix { };
+          cloudreve-bin = final.callPackage ./packages/cloudreve-bin.nix { };
         };
 
         nixosModules.default = import ./modules/cloudreve.nix;
