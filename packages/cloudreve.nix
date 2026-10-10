@@ -78,8 +78,18 @@ let
     installPhase = ''
       runHook preInstall
 
+      # Cloudreve reads the embedded archive as `fs.Sub(statics, "assets/build")`,
+      # so the zip must have that exact layout.
+      mkdir -p assets
+      cp -r build assets/build
+
+      # Normalise file metadata and ordering so the archive (and therefore the
+      # Go binary that embeds it) is reproducible.
+      find assets -exec touch -h -d @1 {} +
+      find assets -print | LC_ALL=C sort > files.txt
+
       mkdir -p $out
-      zip -rq "$out/assets.zip" assets/build
+      zip -qX -@ "$out/assets.zip" < files.txt
 
       runHook postInstall
     '';
