@@ -60,7 +60,7 @@ let
 
     offlineCache = fetchYarnDeps {
       yarnLock = patchedYarnLock;
-      hash = lib.fakeHash;
+      hash = "sha256-6mRSovoYTngrlkyCO2sjqukjQ8v7DhGWJjlxN59l8VU=";
     };
 
     # The release script runs `yarn version --new-version <version>`, which needs
