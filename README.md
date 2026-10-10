@@ -19,7 +19,7 @@ This flake provides **two** packages:
 | `packages.<system>.cloudreve` | Cloudreve built from source. **Default.** |
 | `packages.<system>.cloudreve-bin` | Cloudreve repackaged from the upstream release binary. |
 | `packages.<system>.default` | Alias for `packages.<system>.cloudreve`. |
-| `nixosModules.default`, `nixosModules.cloudreve` | NixOS module exposing `services.cloudreve`. |
+| `nixosModules.default`, `nixosModules.cloudreve` | NixOS module exposing `services.cloudreve`. Both also add `overlays.default` to `nixpkgs.overlays`. |
 | `overlays.default` | Adds `pkgs.cloudreve` and `pkgs.cloudreve-bin` to nixpkgs. |
 
 Supported systems: `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`,
@@ -51,14 +51,13 @@ Add the flake as an input and import the module:
 }
 ```
 
-The module defaults to the from-source package. To use the prebuilt release
-binary instead, add the overlay and select it:
+The `nixosModules.cloudreve` module adds `overlays.default` to
+`nixpkgs.overlays` itself, so `pkgs.cloudreve` and `pkgs.cloudreve-bin` are
+available wherever you import it. `services.cloudreve.package` defaults to the
+from-source build; to use the prebuilt release binary instead:
 
 ```nix
 {
-  nixpkgs.overlays = [ cloudreve.overlays.default ];
-
-  # The module imports its own default, so point it at the overlay package.
   services.cloudreve.package = pkgs.cloudreve-bin;
 }
 ```

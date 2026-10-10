@@ -16,7 +16,9 @@ Primary deliverables:
 - `packages.<system>.cloudreve-bin` — Cloudreve repackaged from the official
   GitHub release binary.
 - `nixosModules.default` / `nixosModules.cloudreve` — the `services.cloudreve`
-  NixOS module.
+  NixOS module. It imports `modules/cloudreve.nix` and adds `overlays.default` to
+  `nixpkgs.overlays`, so importing it also provides `pkgs.cloudreve` and
+  `pkgs.cloudreve-bin`.
 - `overlays.default` — adds `pkgs.cloudreve` and `pkgs.cloudreve-bin`.
 
 ## Hard rules
@@ -69,9 +71,15 @@ LICENSE                    MIT license (packaging code)
 - Keep `packages.<system>.cloudreve` as the from-source build and
   `packages.<system>.cloudreve-bin` as the prebuilt release. Keep
   `packages.<system>.default` pointing at `cloudreve`.
+- `nixosModules.cloudreve` is a wrapper around `modules/cloudreve.nix` whose only
+  extra job is `nixpkgs.overlays = [ self.overlays.default ]`;
+  `nixosModules.default` is an alias for it. This is what makes
+  `pkgs.cloudreve-bin` usable from a consumer's configuration (e.g.
+  `services.cloudreve.package = pkgs.cloudreve-bin;`) without them adding the
+  overlay by hand. Do not drop the overlay wiring without updating the READMEs.
 - The NixOS module's `package` option defaults to
-  `pkgs.callPackage ../packages/cloudreve.nix { }` (the from-source package) so
-  the module works without the overlay.
+  `pkgs.callPackage ../packages/cloudreve.nix { }` (the from-source package), so
+  the module works even when the overlay is not applied.
 - `services.cloudreve.settings` is the `conf.ini` contents and maps directly onto
   the INI structure: each attribute set is a `[Section]` and its keys are the
   options in it (e.g. `settings.Redis.Server = "127.0.0.1:6379"`). The option type

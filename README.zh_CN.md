@@ -19,7 +19,7 @@ S3、OneDrive、Google Drive 等）。
 | `packages.<system>.cloudreve` | 从源码构建的 Cloudreve。**默认。** |
 | `packages.<system>.cloudreve-bin` | 重新打包的上游 release 二进制。 |
 | `packages.<system>.default` | `packages.<system>.cloudreve` 的别名。 |
-| `nixosModules.default`、`nixosModules.cloudreve` | 提供 `services.cloudreve` 的 NixOS 模块。 |
+| `nixosModules.default`、`nixosModules.cloudreve` | 提供 `services.cloudreve` 的 NixOS 模块。两者都会把 `overlays.default` 加进 `nixpkgs.overlays`。 |
 | `overlays.default` | 向 nixpkgs 添加 `pkgs.cloudreve` 和 `pkgs.cloudreve-bin`。 |
 
 支持的 system：`x86_64-linux`、`aarch64-linux`、`x86_64-darwin`、
@@ -51,12 +51,13 @@ release 的所有平台。
 }
 ```
 
-模块默认使用从源码构建的包。若想改用预编译二进制，加上 overlay 并指定：
+`nixosModules.cloudreve` 模块会自己把 `overlays.default` 加进
+`nixpkgs.overlays`，所以在导入它的地方 `pkgs.cloudreve` 和 `pkgs.cloudreve-bin`
+都可用。`services.cloudreve.package` 默认使用从源码构建的包；若想改用预编译
+二进制：
 
 ```nix
 {
-  nixpkgs.overlays = [ cloudreve.overlays.default ];
-
   services.cloudreve.package = pkgs.cloudreve-bin;
 }
 ```

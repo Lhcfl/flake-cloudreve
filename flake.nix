@@ -22,46 +22,55 @@
 
   outputs =
     inputs@{ flake-parts, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
-      ];
+    flake-parts.lib.mkFlake { inherit inputs; } (
+      { self, ... }: {
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+          "x86_64-darwin"
+          "aarch64-darwin"
+        ];
 
-      perSystem =
-        { pkgs, self', ... }:
-        {
-          packages = {
-            cloudreve = pkgs.callPackage ./packages/cloudreve.nix { };
-            cloudreve-bin = pkgs.callPackage ./packages/cloudreve-bin.nix { };
-            default = self'.packages.cloudreve;
+        perSystem =
+          { pkgs, self', ... }:
+          {
+            packages = {
+              cloudreve = pkgs.callPackage ./packages/cloudreve.nix { };
+              cloudreve-bin = pkgs.callPackage ./packages/cloudreve-bin.nix { };
+              default = self'.packages.cloudreve;
+            };
+
+            formatter = pkgs.nixfmt-tree;
+
+            devShells.default = pkgs.mkShell {
+              packages = with pkgs; [
+                curl
+                gawk
+                gnused
+                jq
+                nix-update
+                nixd
+                nixfmt-tree
+              ];
+            };
           };
 
-          formatter = pkgs.nixfmt-tree;
+        flake = {
+          overlays.default = final: _prev: {
+            cloudreve = final.callPackage ./packages/cloudreve.nix { };
+            cloudreve-bin = final.callPackage ./packages/cloudreve-bin.nix { };
+          };
 
-          devShells.default = pkgs.mkShell {
-            packages = with pkgs; [
-              curl
-              gawk
-              gnused
-              jq
-              nix-update
-              nixd
-              nixfmt-tree
+          nixosModules.default = self.nixosModules.cloudreve;
+
+          nixosModules.cloudreve = { ... }: {
+            imports = [
+              ./modules/cloudreve.nix
             ];
+
+            nixpkgs.overlays = [ self.overlays.default ];
           };
         };
-
-      flake = {
-        overlays.default = final: _prev: {
-          cloudreve = final.callPackage ./packages/cloudreve.nix { };
-          cloudreve-bin = final.callPackage ./packages/cloudreve-bin.nix { };
-        };
-
-        nixosModules.default = import ./modules/cloudreve.nix;
-        nixosModules.cloudreve = import ./modules/cloudreve.nix;
-      };
-    };
+      }
+    );
 }
