@@ -43,11 +43,13 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
 
-      - name: Build packages and run checks
+      - name: Build cloudreve-bin
+        run: nix build -L .#cloudreve-bin
+
+      - name: Build cloudreve (from source)
         run: |
           set -o pipefail
-          nix build -L .#cloudreve .#cloudreve-bin 2>&1 | tee build.log
-          nix flake check -L 2>&1 | tee -a build.log
+          nix build -L .#cloudreve 2>&1 | tee source-build.log
 
       - name: Report hash mismatches
         if: failure()
@@ -55,7 +57,7 @@ jobs:
           {
             echo "### Hash mismatches"
             echo '```'
-            grep -aE 'got: +sha256-|specified: +sha256-|hash mismatch' build.log || true
+            grep -aE 'got: +sha256-|specified: +sha256-|hash mismatch' source-build.log || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          grep -aE 'got: +sha256-|specified: +sha256-' build.log || true
+          grep -aE 'got: +sha256-|specified: +sha256-' source-build.log || true

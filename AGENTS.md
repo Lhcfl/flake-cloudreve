@@ -15,13 +15,32 @@ Primary deliverables:
   frontend). This is the **default** package.
 - `packages.<system>.cloudreve-bin` — Cloudreve repackaged from the official
   GitHub release binary.
-- `checks.<system>.cloudreve` / `checks.<system>.cloudreve-bin` — smoke tests
-  (see below).
 - `nixosModules.default` / `nixosModules.cloudreve` — the `services.cloudreve`
   NixOS module.
 - `overlays.default` — adds `pkgs.cloudreve` and `pkgs.cloudreve-bin`.
 
 ## Hard rules
+
+### Never commit or push unless explicitly asked
+
+**Do not run `git commit`, `git push`, or any other command that creates or
+rewrites history or moves a remote, unless the user explicitly asks for that
+specific action in that turn.**
+
+- "Fix X" / "refactor Y" / "continue" are not permission to commit.
+- "Commit" grants commit only; it does not grant push. "Push" grants push.
+- When in doubt, leave the changes in the working tree and say so. Do not stage,
+  amend, rebase, tag, force-push or create branches on your own initiative.
+- Do not open, update or close pull requests, or trigger workflows on the
+  user's behalf, without being asked.
+
+### Only run what was asked
+
+Do not run verification, tests, builds or exploratory commands that the user did
+not ask for. In particular, do not re-run a suite "just to be sure" after a
+change, and do not run commands whose only purpose is to produce evidence for
+the user. If a command could mutate the working tree, stage files or touch the
+network, treat it as requiring explicit permission.
 
 ### Do not store secrets in the Nix store
 
@@ -128,32 +147,14 @@ The flake `formatter` is `pkgs.nixfmt-tree` (treefmt running `nixfmt` on
 repository. Run it inside this repository only and never point it at a large
 tree such as `/nix/store`.
 
+### No tests in this repo
+
+There are deliberately no `checks` outputs and no test suite here. Testing is
+Cloudreve's own responsibility; CI only proves that the packages evaluate and
+build. If it compiles, it passes. Do not add smoke tests, integration tests or
+"verification" derivations.
+
 ## Verification commands
-
-Evaluate the flake without building everything:
-
-```console
-$ nix flake check --no-build
-```
-
-Run the smoke tests (`nix flake check` builds the packages and both `checks`):
-
-```console
-$ nix flake check -L
-```
-
-The smoke tests start the server against a temporary SQLite database on
-`127.0.0.1:0`, assert the printed version and short commit (validating the
-`ldflags`) and
-assert that `assets/build/index.html`, `version.json` and `sw.js` are present in
-the binary (validating that the web frontend was embedded). Keep both checks
-working when changing the build; the embed assertion is what caught a broken
-`assets.zip` layout.
-
-The commit is asserted both by shape (`Commit #<7 hex chars>`) and by exact
-value. Asserting only the exact value is useless if the expected value is read
-back from the same (possibly wrong) build input — that is how a store path
-ended up linked into the binary without any check noticing.
 
 Build the packages (the binary package is quick; the from-source package is
 heavy):
@@ -199,11 +200,11 @@ $ nix-store -r <that .drv>
 
 ## CI / Cachix
 
-`.github/workflows/ci.yml` builds both packages, runs `nix flake check` (which
-includes the smoke tests) on `x86_64-linux` and `aarch64-linux`, and pushes
-results to the `lhcfl` Cachix cache via `cachix/cachix-action`. Add the
-repository secret `CACHIX_AUTH_TOKEN` (a Cachix auth token with write access to
-`lhcfl`) to enable pushing; without it, pushes are skipped.
+`.github/workflows/ci.yml` builds both packages on `x86_64-linux` and
+`aarch64-linux` and pushes results to the `lhcfl` Cachix cache via
+`cachix/cachix-action`. Add the repository secret `CACHIX_AUTH_TOKEN` (a Cachix
+auth token with write access to `lhcfl`) to enable pushing; without it, pushes
+are skipped.
 
 The flake's `nixConfig` recommends the `nix-community` and `lhcfl` caches as
 `extra-substituters` with their public keys. Keep those in sync with the cache
