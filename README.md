@@ -230,6 +230,32 @@ a build fails with a hash mismatch, the workflow writes the expected
 field and push again. After at most two iterations the source build passes and
 is cached.
 
+## Automatic updates
+
+`scripts/update.sh` updates the packages to a given (or the latest) Cloudreve
+release:
+
+- `cloudreve-bin`: bumps `version` and all per-platform hashes from the
+  release's `checksums.txt`.
+- `cloudreve`: bumps `version`, `rev`, `commit`, the pinned `frontendRev` and
+  the source hashes, then uses
+  [nix-update](https://github.com/Mic92/nix-update) to refresh the Go
+  `vendorHash` and the Yarn `offlineCache` hash.
+
+Run it from the dev shell:
+
+```console
+$ nix develop -c scripts/update.sh            # latest release, both packages
+$ nix develop -c scripts/update.sh 4.20.0     # explicit version, both packages
+$ nix develop -c scripts/update.sh 4.20.0 bin
+$ nix develop -c scripts/update.sh 4.20.0 src
+```
+
+`.github/workflows/update.yml` runs the script daily (and on manual dispatch)
+and opens or updates a pull request with the result. The repository setting
+*Settings → Actions → General → Allow GitHub Actions to create and approve pull
+requests* must be enabled for the PR to be created.
+
 ## Updating Cloudreve
 
 1. Pick a new tag from <https://github.com/cloudreve/Cloudreve/releases>.
@@ -253,12 +279,14 @@ $ nix-prefetch-url --unpack \
 ## Repository layout
 
 ```
-flake.nix                 # flake-parts entry point: packages, overlay, modules
-packages/cloudreve.nix    # from-source build (default)
+flake.nix                  # flake-parts entry point: packages, overlay, modules
+packages/cloudreve.nix     # from-source build (default)
 packages/cloudreve-bin.nix # prebuilt release repackaging
-modules/cloudreve.nix     # NixOS module
-.github/workflows/ci.yml  # GitHub Actions build + Cachix
-AGENTS.md                 # instructions for automated agents
+modules/cloudreve.nix      # NixOS module
+scripts/update.sh          # release updater (nix-update)
+.github/workflows/ci.yml   # GitHub Actions build + Cachix
+.github/workflows/update.yml # scheduled update PR
+AGENTS.md                  # instructions for automated agents
 ```
 
 ## License

@@ -34,7 +34,9 @@ flake.nix                  flake-parts entry point: packages, overlay, nixosModu
 packages/cloudreve.nix     from-source build (default)
 packages/cloudreve-bin.nix prebuilt release repackaging
 modules/cloudreve.nix      the actual NixOS module
-.github/workflows/ci.yml   GitHub Actions build + Cachix
+scripts/update.sh          release updater used by the Update workflow
+.github/workflows/ci.yml   build + Cachix on push/PR
+.github/workflows/update.yml  scheduled nix-update pull request
 README.md                  English documentation
 README.zh_CN.md            Chinese documentation
 LICENSE                    MIT license (packaging code)
@@ -81,11 +83,16 @@ be computed without first fetching or building:
 - `vendorHash` — only known after `go mod vendor` runs once.
 
 Until these are filled in, the package uses `lib.fakeHash` and the build fails
-with a hash mismatch. CI prints the expected `got: sha256-...` values to the job
-summary. The intended workflow is:
+with a hash mismatch. `scripts/update.sh` (and the Update workflow) uses
+[nix-update](https://github.com/Mic92/nix-update) to compute `vendorHash` and
+the Yarn `offlineCache` hash, so it can fill them automatically. The CI job
+summary can also be used to read them from a failing build.
+
+The intended manual workflow is:
 
 1. Push with the placeholder hashes.
-2. Read the expected hashes from the CI job summary / logs.
+2. Read the expected hashes from the CI job summary / logs (or run
+   `nix develop -c scripts/update.sh`).
 3. Fill them into `packages/cloudreve.nix` and push again.
 
 `fetchYarnDeps` uses a lockfile with `registry.npmjs.org` URLs rewritten to
@@ -170,6 +177,24 @@ are skipped.
 The flake's `nixConfig` recommends the `nix-community` and `lhcfl` caches as
 `extra-substituters` with their public keys. Keep those in sync with the cache
 name used by CI.
+
+## Automatic updates
+
+`scripts/update.sh` updates the packages
+(`bin`, `src` or both) using [nix-update](https://github.com/Mic92/nix-update):
+
+- `cloudreve-bin`: `version` plus every per-platform hash, read from the
+  release's `checksums.txt` (nix-update can only prefetch the hash of the
+  system it runs on, hence the checksums approach).
+- `cloudreve`: `version`, `rev`, `commit`, the pinned `frontendRev` and the
+  source hashes, followed by `nix-update cloudreve --flake --version=skip` to
+  refresh `vendorHash` and `offlineCache`.
+
+`.github/workflows/update.yml` runs the script daily and on manual dispatch and
+opens/updates a pull request. `nix-update` and the other tools are provided by
+the flake's dev shell (`nix develop -c scripts/update.sh`). The repository
+setting *Allow GitHub Actions to create and approve pull requests* must be
+enabled for the PR to be created.
 
 ## Updating Cloudreve
 

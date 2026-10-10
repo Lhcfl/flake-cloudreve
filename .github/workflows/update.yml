@@ -1,0 +1,60 @@
+name: Update
+
+on:
+  schedule:
+    # Every day at 04:17 UTC.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Cloudreve version to update to (default: latest release)"
+        required: false
+        type: string
+
+concurrency:
+  group: update-cloudreve
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Update packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Set up Cachix
+        uses: cachix/cachix-action@v17
+        with:
+          name: lhcfl
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
+
+      - name: Update packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_VERSION: ${{ inputs.version }}
+        run: nix develop -c bash scripts/update.sh "$UPDATE_VERSION" </dev/null
+
+      - name: Create or update pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          title: "flake: update Cloudreve packages"
+          branch: nix-update/cloudreve
+          delete-branch: true
+          commit-message: "flake: update Cloudreve packages"
+          body: |
+            Automated update produced by
+            [nix-update](https://github.com/Mic92/nix-update) via
+            `scripts/update.sh`.

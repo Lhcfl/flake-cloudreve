@@ -215,6 +215,29 @@ CI 使用的缓存名直接写死在 `.github/workflows/ci.yml` 中。
 expected `got: sha256-...` 写入 job summary。把它填回对应字段再 push 即可。
 最多两轮迭代后源码构建就能通过并被缓存。
 
+## 自动更新
+
+`scripts/update.sh` 可以把两个包更新到指定（或最新）的 Cloudreve 版本：
+
+- `cloudreve-bin`：更新 `version`，并根据 release 的 `checksums.txt` 更新所有平台
+  的 hash。
+- `cloudreve`：更新 `version`、`rev`、`commit`、固定的 `frontendRev` 以及源码
+  hash，然后用 [nix-update](https://github.com/Mic92/nix-update) 刷新 Go 的
+  `vendorHash` 和 Yarn 的 `offlineCache` hash。
+
+在 dev shell 中运行：
+
+```console
+$ nix develop -c scripts/update.sh            # 最新 release，两个包
+$ nix develop -c scripts/update.sh 4.20.0     # 指定版本，两个包
+$ nix develop -c scripts/update.sh 4.20.0 bin
+$ nix develop -c scripts/update.sh 4.20.0 src
+```
+
+`.github/workflows/update.yml` 会每天（以及手动触发时）运行该脚本，并创建或更新
+一个 pull request。需要在仓库设置中开启 *Settings → Actions → General → Allow
+GitHub Actions to create and approve pull requests*，否则无法创建 PR。
+
 ## 更新 Cloudreve
 
 1. 在 <https://github.com/cloudreve/Cloudreve/releases> 选择新版本。
@@ -239,7 +262,9 @@ flake.nix                  # flake-parts 入口：packages、overlay、modules
 packages/cloudreve.nix     # 从源码构建（默认）
 packages/cloudreve-bin.nix # 重新打包 release
 modules/cloudreve.nix      # NixOS 模块
+scripts/update.sh          # 版本更新脚本（nix-update）
 .github/workflows/ci.yml   # GitHub Actions 构建 + Cachix
+.github/workflows/update.yml # 定时更新 PR
 AGENTS.md                  # 给自动化 agent 的指令
 ```
 

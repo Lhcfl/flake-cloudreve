@@ -42,9 +42,14 @@
           formatter = pkgs.nixfmt-tree;
 
           devShells.default = pkgs.mkShell {
-            packages = [
-              pkgs.nixfmt-tree
-              pkgs.nixd
+            packages = with pkgs; [
+              curl
+              gawk
+              gnused
+              jq
+              nix-update
+              nixd
+              nixfmt-tree
             ];
           };
         };
