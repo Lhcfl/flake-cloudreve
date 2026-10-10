@@ -63,29 +63,35 @@ binary instead, add the overlay and select it:
 }
 ```
 
-### Minimal configuration (SQLite)
+### Minimal configuration
 
 ```nix
 services.cloudreve = {
   enable = true;
-  settings = {
-    System = {
-      Listen = "127.0.0.1:5212";
-      LogLevel = "info";
-    };
-  };
+  port = 5212;
 };
 ```
 
-The service listens on `System.Listen` (default `:5212`). The **first user that
-registers becomes the administrator**, so open `http://<host>:5212` and complete
-the registration.
+`port` is the HTTP port Cloudreve listens on. The **first user that registers
+becomes the administrator**, so open `http://<host>:5212` and complete the
+registration.
+
+Everything else is configured through `settings`, which is the `conf.ini`
+contents as nested INI sections:
+
+```nix
+services.cloudreve.settings = {
+  System.LogLevel = "info";
+  Redis.Server = "127.0.0.1:6379";
+};
+```
 
 ### Behind nginx with TLS
 
 ```nix
 services.cloudreve = {
   enable = true;
+  port = 9000;
   nginx = {
     enable = true;
     host = "cloud.example.com";
@@ -96,43 +102,45 @@ services.cloudreve = {
 };
 ```
 
-When `services.cloudreve.nginx.enable` is set, a virtual host proxying to the
-port from `System.Listen` is generated.
+When `services.cloudreve.nginx.enable` is set, a virtual host proxying to
+`services.cloudreve.port` is generated.
 
-### MariaDB/MySQL provisioned locally
+### Database
+
+There are no dedicated database options; the `[Database]` section is set through
+`settings`, the same way as documented upstream:
 
 ```nix
-services.cloudreve = {
-  enable = true;
-  database = {
-    type = "mysql";
-    createLocally = true;
-    passwordFile = "/run/secrets/cloudreve-db-password";
-  };
+services.cloudreve.settings.Database = {
+  Type = "postgres";
+  Host = "127.0.0.1";
+  Port = 5432;
+  Name = "cloudreve";
+  User = "cloudreve";
 };
 ```
 
-With `createLocally = true`, `services.mysql` (MariaDB by default) is enabled,
-the database and user are created, and a one-shot unit sets the user's password.
-
-### External PostgreSQL
-
-```nix
-services.cloudreve = {
-  enable = true;
-  database = {
-    type = "postgres";
-    host = "127.0.0.1";
-    port = 5432;
-    name = "cloudreve";
-    user = "cloudreve";
-    passwordFile = "/run/secrets/cloudreve-db-password";
-  };
-};
-```
+Without a `[Database]` section Cloudreve falls back to SQLite and keeps its
+database in `${stateDir}/data/cloudreve.db`.
 
 > Cloudreve 4.19 hard-codes `sslmode=disable` for PostgreSQL connections, so TLS
 > to the database is not supported by the application yet.
+
+### Secrets
+
+`settings` is rendered to a file in the Nix store, which is world-readable, so
+anything placed there is world-readable too. Pass secrets at runtime instead:
+
+```nix
+services.cloudreve.environmentFile = "/run/secrets/cloudreve.env";
+```
+
+The file is handed to systemd as `EnvironmentFile=` and uses Cloudreve's
+`CR_CONF_<Section>__<Key>` override format:
+
+```
+CR_CONF_Database__Password=...
+```
 
 ## Options
 
@@ -143,36 +151,29 @@ The full option tree lives in `modules/cloudreve.nix`. The highlights:
   from-source package).
 - `services.cloudreve.user` / `.group` — service account (default `cloudreve`).
 - `services.cloudreve.stateDir` — data directory (default `/var/lib/cloudreve`).
-- `services.cloudreve.settings` — free-form `conf.ini` configuration as nested
-  INI sections, e.g. `settings.System.Listen = ":5212"` or
-  `settings.Redis.Server = "127.0.0.1:6379"`. Values may be strings, integers,
-  floats, booleans or null.
-- `services.cloudreve.database.*` — typed database configuration
-  (`type`, `host`, `port`, `name`, `user`, `password`, `passwordFile`,
-  `charset`, `unixSocket`, `dbFile`, `createLocally`).
+- `services.cloudreve.port` — HTTP port to listen on (default `5212`).
+- `services.cloudreve.settings` — the `conf.ini` contents as nested INI sections,
+  e.g. `settings.Redis.Server = "127.0.0.1:6379"`. Values may be strings,
+  integers, floats, booleans or null.
+- `services.cloudreve.environmentFile` — systemd environment file with
+  `CR_CONF_*` overrides; the place for secrets.
 - `services.cloudreve.nginx.*` — optional nginx reverse proxy
   (`enable`, `host`, `enableACME`, `forceSSL`).
 
-### `settings` vs. `database`
+### `settings`
 
-`settings` is the escape hatch for everything Cloudreve supports. It maps onto
-the INI structure directly: each attribute set is a `[Section]` and its keys are
-the options in it.
+`settings` is the `conf.ini` contents. It maps onto the INI structure directly:
+each attribute set is a `[Section]` and its keys are the options in it.
 
 Values may be strings, integers, floats, booleans or null. If a value contains
 `#` or `;` it is automatically wrapped in backticks so Cloudreve does not treat
 the rest of the line as a comment.
 
-The dedicated `database.*` options expand into the `[Database]` section and
-**take precedence** over overlapping keys in `settings`. Use `database.*` for
-the common cases and `settings` for anything else.
-
-Secrets should be passed through `database.passwordFile`. The password is
-injected at runtime via the `CR_CONF_Database__Password` environment variable
-and never written to the world-readable Nix store.
+The rendered file is passed to Cloudreve with `-c` straight from the Nix store,
+so there is no second copy under `stateDir` that could go stale.
 
 Refer to the upstream configuration reference for all INI keys:
-<https://docs.cloudreve.org/zh/overview/configure>.
+<https://docs.cloudreve.org/en/overview/configure>.
 
 ## Using the packages directly
 

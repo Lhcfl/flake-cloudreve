@@ -44,9 +44,10 @@ network, treat it as requiring explicit permission.
 
 ### Do not store secrets in the Nix store
 
-Database passwords (and similar secrets) must go through
-`services.cloudreve.database.passwordFile`. Never bake them into
-`settings`/`database.password`.
+`services.cloudreve.settings` is rendered into a world-readable path in the Nix
+store, so secrets must not go there. Pass them at runtime through
+`services.cloudreve.environmentFile` instead (`CR_CONF_<Section>__<Key>`
+overrides, e.g. `CR_CONF_Database__Password`).
 
 ## Layout
 
@@ -71,20 +72,21 @@ LICENSE                    MIT license (packaging code)
 - The NixOS module's `package` option defaults to
   `pkgs.callPackage ../packages/cloudreve.nix { }` (the from-source package) so
   the module works without the overlay.
-- `services.cloudreve.settings` maps directly onto the INI structure: each
-  attribute set is a `[Section]` and its keys are the options in it (e.g.
-  `settings.System.Listen = ":5212"`). The option type is
-  `(pkgs.formats.ini { }).type`, so values may be strings, ints, floats, bools or
-  null. Do not change it back to flat dotted keys.
+- `services.cloudreve.settings` is the `conf.ini` contents and maps directly onto
+  the INI structure: each attribute set is a `[Section]` and its keys are the
+  options in it (e.g. `settings.Redis.Server = "127.0.0.1:6379"`). The option type
+  is `(pkgs.formats.ini { }).type`, so values may be strings, ints, floats, bools
+  or null. Do not change it back to flat dotted keys.
 - Values in `settings` that contain `#` or `;` are wrapped in backticks, because
-  Cloudreve treats those characters as INI comments. This is implemented as a
-  custom `mkKeyValue` on the `pkgs.formats.ini` format used to render
-  `conf.ini` (see the `format` binding), not as a post-processing pass.
-- `services.cloudreve.database.*` expands into the `[Database]` section and
-  takes precedence over overlapping keys in `settings`.
-- The `database.passwordFile` secret is injected at runtime through the
-  `CR_CONF_Database__Password` environment variable (Cloudreve accepts `__` as
-  a section/key separator, which keeps it a valid systemd env var name).
+  Cloudreve treats those characters as INI comments. This is implemented as the
+  `mkKeyValue` of the `pkgs.formats.ini` format used to render `conf.ini`, not as
+  a post-processing pass.
+- The rendered `conf.ini` is passed to Cloudreve with `-c` straight from the Nix
+  store. Do not reintroduce the "install a copy into `stateDir` first" step: it is
+  redundant (Cloudreve only writes the file when it is absent) and the copy would
+  be silently overwritten on every restart.
+- There are no typed `database.*` options; the `[Database]` section is set through
+  `settings` like any other section.
 - `cloudreve-bin` is a prebuilt upstream release, so leave
   `sourceProvenance = [ lib.sourceTypes.binaryNativeCode ]` and do not add a
   `buildGoModule` build there.
@@ -178,7 +180,7 @@ let
       {
         nixpkgs.hostPlatform = "x86_64-linux";
         services.cloudreve.enable = true;
-        services.cloudreve.settings.System.Listen = "127.0.0.1:5212";
+        services.cloudreve.port = 5212;
         system.stateVersion = "25.11";
         fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
         boot.loader.grub.devices = [ "nodev" ];

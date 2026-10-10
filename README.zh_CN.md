@@ -61,28 +61,33 @@ release 的所有平台。
 }
 ```
 
-### 最小配置（SQLite）
+### 最小配置
 
 ```nix
 services.cloudreve = {
   enable = true;
-  settings = {
-    System = {
-      Listen = "127.0.0.1:5212";
-      LogLevel = "info";
-    };
-  };
+  port = 5212;
 };
 ```
 
-服务监听 `System.Listen`（默认 `:5212`）。**第一个注册的用户会被设为管理员**，
+`port` 是 Cloudreve 监听的 HTTP 端口。**第一个注册的用户会被设为管理员**，
 因此请打开 `http://<host>:5212` 完成注册。
+
+其余配置全部通过 `settings`，即 `conf.ini` 的内容，用嵌套的 INI section 表示：
+
+```nix
+services.cloudreve.settings = {
+  System.LogLevel = "info";
+  Redis.Server = "127.0.0.1:6379";
+};
+```
 
 ### 通过 nginx 反向代理并启用 TLS
 
 ```nix
 services.cloudreve = {
   enable = true;
+  port = 9000;
   nginx = {
     enable = true;
     host = "cloud.example.com";
@@ -94,42 +99,44 @@ services.cloudreve = {
 ```
 
 启用 `services.cloudreve.nginx.enable` 后，会生成一个反向代理到
-`System.Listen` 端口的虚拟主机。
+`services.cloudreve.port` 的虚拟主机。
 
-### 本地自动配置 MariaDB/MySQL
+### 数据库
+
+没有专用的数据库配置项，`[Database]` 段通过 `settings` 设置，写法和上游文档
+一致：
 
 ```nix
-services.cloudreve = {
-  enable = true;
-  database = {
-    type = "mysql";
-    createLocally = true;
-    passwordFile = "/run/secrets/cloudreve-db-password";
-  };
+services.cloudreve.settings.Database = {
+  Type = "postgres";
+  Host = "127.0.0.1";
+  Port = 5432;
+  Name = "cloudreve";
+  User = "cloudreve";
 };
 ```
 
-`createLocally = true` 会启用 `services.mysql`（默认 MariaDB）、创建数据库和
-用户，并用一个 oneshot 服务设置该用户的密码。
-
-### 使用外部 PostgreSQL
-
-```nix
-services.cloudreve = {
-  enable = true;
-  database = {
-    type = "postgres";
-    host = "127.0.0.1";
-    port = 5432;
-    name = "cloudreve";
-    user = "cloudreve";
-    passwordFile = "/run/secrets/cloudreve-db-password";
-  };
-};
-```
+不配置 `[Database]` 段时 Cloudreve 会退回 SQLite，数据库文件位于
+`${stateDir}/data/cloudreve.db`。
 
 > Cloudreve 4.19 对 PostgreSQL 连接写死了 `sslmode=disable`，因此目前应用层面
 > 还不支持连接数据库时启用 TLS。
+
+### 密钥
+
+`settings` 会被渲染成 Nix store 里的文件，store 全局可读，所以放进去的东西也
+全局可读。密钥应在运行时传入：
+
+```nix
+services.cloudreve.environmentFile = "/run/secrets/cloudreve.env";
+```
+
+该文件会作为 systemd 的 `EnvironmentFile=` 传入，使用 Cloudreve 的
+`CR_CONF_<Section>__<Key>` 覆盖格式：
+
+```
+CR_CONF_Database__Password=...
+```
 
 ## 配置项
 
@@ -139,29 +146,25 @@ services.cloudreve = {
 - `services.cloudreve.package` —— 使用的 Cloudreve 包（默认是从源码构建的包）。
 - `services.cloudreve.user` / `.group` —— 运行服务的用户/组（默认 `cloudreve`）。
 - `services.cloudreve.stateDir` —— 数据目录（默认 `/var/lib/cloudreve`）。
-- `services.cloudreve.settings` —— 自由的 `conf.ini` 配置，用嵌套的 INI section
-  表示，例如 `settings.System.Listen = ":5212"` 或
-  `settings.Redis.Server = "127.0.0.1:6379"`。值的类型可以是字符串、整数、
-  浮点数、布尔值或 null。
-- `services.cloudreve.database.*` —— 结构化的数据库配置
-  （`type`、`host`、`port`、`name`、`user`、`password`、`passwordFile`、
-  `charset`、`unixSocket`、`dbFile`、`createLocally`）。
+- `services.cloudreve.port` —— 监听的 HTTP 端口（默认 `5212`）。
+- `services.cloudreve.settings` —— `conf.ini` 的内容，用嵌套的 INI section
+  表示，例如 `settings.Redis.Server = "127.0.0.1:6379"`。值的类型可以是
+  字符串、整数、浮点数、布尔值或 null。
+- `services.cloudreve.environmentFile` —— systemd 环境文件，用于 `CR_CONF_*`
+  覆盖；密钥放在这里。
 - `services.cloudreve.nginx.*` —— 可选的 nginx 反向代理
   （`enable`、`host`、`enableACME`、`forceSSL`）。
 
-### `settings` 与 `database` 的关系
+### `settings`
 
-`settings` 是覆盖 Cloudreve 所有配置的兜底入口，直接对应 INI 结构：每个属性集
-就是一个 `[Section]`，里面的键就是该 section 的配置项。
+`settings` 就是 `conf.ini` 的内容，直接对应 INI 结构：每个属性集就是一个
+`[Section]`，里面的键就是该 section 的配置项。
 
 值的类型可以是字符串、整数、浮点数、布尔值或 null。如果值里包含 `#` 或 `;`，
 模块会自动用反引号包裹，避免 Cloudreve 把后面的内容当注释。
 
-专用的 `database.*` 配置会展开到 `[Database]` 段，且**优先级高于** `settings`
-中的同名键。常见场景用 `database.*`，其他情况用 `settings`。
-
-密码应通过 `database.passwordFile` 传入。密码会在运行时通过
-`CR_CONF_Database__Password` 环境变量注入，不会写进全局可读的 Nix store。
+渲染出的文件直接以 `-c` 从 Nix store 传给 Cloudreve，所以 `stateDir` 下没有
+第二份副本，也就不存在副本过期的问题。
 
 所有 INI 配置项请参考上游文档：<https://docs.cloudreve.org/zh/overview/configure>。
 
