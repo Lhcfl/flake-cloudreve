@@ -132,6 +132,12 @@ buildGoModule {
     fi
   '';
 
+  # Exposed so checks and tooling can assert on what was built.
+  passthru = {
+    inherit commit frontendRev;
+    assets = assets;
+  };
+
   meta = {
     description = "Self-hosted file management and sharing system (built from source)";
     longDescription = ''

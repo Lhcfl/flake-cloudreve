@@ -19,6 +19,7 @@ S3、OneDrive、Google Drive 等）。
 | `packages.<system>.cloudreve` | 从源码构建的 Cloudreve。**默认。** |
 | `packages.<system>.cloudreve-bin` | 重新打包的上游 release 二进制。 |
 | `packages.<system>.default` | `packages.<system>.cloudreve` 的别名。 |
+| `checks.<system>.cloudreve`、`checks.<system>.cloudreve-bin` | 冒烟测试：二进制能用临时 SQLite 启动，且 Web 前端确实已嵌入。 |
 | `nixosModules.default`、`nixosModules.cloudreve` | 提供 `services.cloudreve` 的 NixOS 模块。 |
 | `overlays.default` | 向 nixpkgs 添加 `pkgs.cloudreve` 和 `pkgs.cloudreve-bin`。 |
 
@@ -208,12 +209,24 @@ CI 使用的缓存名直接写死在 `.github/workflows/ci.yml` 中。
 ## CI
 
 `.github/workflows/ci.yml` 在 push、PR 和手动触发时运行。针对 `x86_64-linux`
-和 `aarch64-linux` 构建 `cloudreve-bin` 与源码包 `cloudreve`，并推送到 Cachix。
+和 `aarch64-linux` 构建两个包、执行 `nix flake check`（包含下面的冒烟测试），
+并推送到 Cachix。
 
 源码包的 fixed-output hash（`packages/cloudreve.nix` 里的 `fetchYarnDeps` 和
 `vendorHash`）通过 CI 日志确定：构建因 hash 不匹配失败时，工作流会把
 expected `got: sha256-...` 写入 job summary。把它填回对应字段再 push 即可。
 最多两轮迭代后源码构建就能通过并被缓存。
+
+### 冒烟测试
+
+`nix flake check` 会构建 `checks.<system>.cloudreve` 和
+`checks.<system>.cloudreve-bin`。每个检查会在 `127.0.0.1:0` 上用临时 SQLite
+启动服务，并断言：
+
+- 二进制能运行且打印出预期版本（源码包还包括 commit）—— 验证 `ldflags` 注入；
+- 二进制中存在 `assets/build/index.html`、`assets/build/version.json` 和
+  `assets/build/sw.js` —— 即 Web 前端确实被嵌入。否则 `assets.zip` 出问题时
+  构建依然会「成功」，只在运行时才暴露。
 
 ## 自动更新
 

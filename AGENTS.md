@@ -15,6 +15,8 @@ Primary deliverables:
   frontend). This is the **default** package.
 - `packages.<system>.cloudreve-bin` — Cloudreve repackaged from the official
   GitHub release binary.
+- `checks.<system>.cloudreve` / `checks.<system>.cloudreve-bin` — smoke tests
+  (see below).
 - `nixosModules.default` / `nixosModules.cloudreve` — the `services.cloudreve`
   NixOS module.
 - `overlays.default` — adds `pkgs.cloudreve` and `pkgs.cloudreve-bin`.
@@ -124,6 +126,19 @@ Evaluate the flake without building everything:
 $ nix flake check --no-build
 ```
 
+Run the smoke tests (`nix flake check` builds the packages and both `checks`):
+
+```console
+$ nix flake check -L
+```
+
+The smoke tests start the server against a temporary SQLite database on
+`127.0.0.1:0`, assert the printed version/commit (validating the `ldflags`) and
+assert that `assets/build/index.html`, `version.json` and `sw.js` are present in
+the binary (validating that the web frontend was embedded). Keep both checks
+working when changing the build; the embed assertion is what caught a broken
+`assets.zip` layout.
+
 Build the packages (the binary package is quick; the from-source package is
 heavy):
 
@@ -168,11 +183,11 @@ $ nix-store -r <that .drv>
 
 ## CI / Cachix
 
-`.github/workflows/ci.yml` builds both packages on `x86_64-linux` and
-`aarch64-linux` and pushes results to the `lhcfl` Cachix cache via
-`cachix/cachix-action`. Add the repository secret `CACHIX_AUTH_TOKEN` (a Cachix
-auth token with write access to `lhcfl`) to enable pushing; without it, pushes
-are skipped.
+`.github/workflows/ci.yml` builds both packages, runs `nix flake check` (which
+includes the smoke tests) on `x86_64-linux` and `aarch64-linux`, and pushes
+results to the `lhcfl` Cachix cache via `cachix/cachix-action`. Add the
+repository secret `CACHIX_AUTH_TOKEN` (a Cachix auth token with write access to
+`lhcfl`) to enable pushing; without it, pushes are skipped.
 
 The flake's `nixConfig` recommends the `nix-community` and `lhcfl` caches as
 `extra-substituters` with their public keys. Keep those in sync with the cache

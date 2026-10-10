@@ -19,6 +19,7 @@ This flake provides **two** packages:
 | `packages.<system>.cloudreve` | Cloudreve built from source. **Default.** |
 | `packages.<system>.cloudreve-bin` | Cloudreve repackaged from the upstream release binary. |
 | `packages.<system>.default` | Alias for `packages.<system>.cloudreve`. |
+| `checks.<system>.cloudreve`, `checks.<system>.cloudreve-bin` | Smoke tests: the binary starts against a throwaway SQLite database and the web frontend is embedded. |
 | `nixosModules.default`, `nixosModules.cloudreve` | NixOS module exposing `services.cloudreve`. |
 | `overlays.default` | Adds `pkgs.cloudreve` and `pkgs.cloudreve-bin` to nixpkgs. |
 
@@ -220,8 +221,9 @@ The cache name used by CI is set directly in `.github/workflows/ci.yml`.
 ## CI
 
 `.github/workflows/ci.yml` runs on pushes, pull requests and manual dispatch.
-For `x86_64-linux` and `aarch64-linux` it builds `cloudreve-bin` and the
-from-source `cloudreve`, pushing everything to the Cachix cache.
+For `x86_64-linux` and `aarch64-linux` it builds both packages, runs
+`nix flake check` (which executes the smoke tests below) and pushes everything
+to the Cachix cache.
 
 The from-source package's fixed-output hashes (`fetchYarnDeps` and
 `vendorHash` in `packages/cloudreve.nix`) are discovered from the CI logs: when
@@ -229,6 +231,19 @@ a build fails with a hash mismatch, the workflow writes the expected
 `got: sha256-...` value to the job summary. Copy it into the corresponding
 field and push again. After at most two iterations the source build passes and
 is cached.
+
+### Smoke tests
+
+`nix flake check` builds `checks.<system>.cloudreve` and
+`checks.<system>.cloudreve-bin`. Each check starts the server against a
+temporary SQLite database on `127.0.0.1:0` and asserts that:
+
+- the binary runs and prints the expected version (and, for the from-source
+  package, commit) — this validates the `ldflags` injection;
+- `assets/build/index.html`, `assets/build/version.json` and
+  `assets/build/sw.js` are present in the binary — i.e. the web frontend was
+  actually embedded. Without this a broken `assets.zip` would still produce a
+  "successful" build that only fails at runtime.
 
 ## Automatic updates
 
