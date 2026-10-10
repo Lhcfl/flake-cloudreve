@@ -110,7 +110,7 @@ buildGoModule {
   # Cloudreve uses the pure-Go modernc.org/sqlite driver, so CGO is not needed.
   env.CGO_ENABLED = 0;
 
-  vendorHash = lib.fakeHash;
+  vendorHash = "sha256-iaLsmB96kAb47Vn2ocZUXiaxLwm/PYCUzi8pDcFmlPM=";
 
   subPackages = [ "." ];
 
