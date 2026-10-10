@@ -68,8 +68,10 @@ release 的所有平台。
 services.cloudreve = {
   enable = true;
   settings = {
-    "System.Listen" = "127.0.0.1:5212";
-    "System.LogLevel" = "info";
+    System = {
+      Listen = "127.0.0.1:5212";
+      LogLevel = "info";
+    };
   };
 };
 ```
@@ -88,7 +90,7 @@ services.cloudreve = {
     enableACME = true;
     forceSSL = true;
   };
-  settings."System.ProxyHeader" = "X-Forwarded-For";
+  settings.System.ProxyHeader = "X-Forwarded-For";
 };
 ```
 
@@ -138,8 +140,10 @@ services.cloudreve = {
 - `services.cloudreve.package` —— 使用的 Cloudreve 包（默认是从源码构建的包）。
 - `services.cloudreve.user` / `.group` —— 运行服务的用户/组（默认 `cloudreve`）。
 - `services.cloudreve.stateDir` —— 数据目录（默认 `/var/lib/cloudreve`）。
-- `services.cloudreve.settings` —— 自由的 `conf.ini` 配置，类型是
-  `attrsOf str`，键使用 `"Section.Key"` 形式，例如 `"System.Listen" = ":5212"`。
+- `services.cloudreve.settings` —— 自由的 `conf.ini` 配置，用嵌套的 INI section
+  表示，例如 `settings.System.Listen = ":5212"` 或
+  `settings.Redis.Server = "127.0.0.1:6379"`。值的类型可以是字符串、整数、
+  浮点数、布尔值或 null。
 - `services.cloudreve.database.*` —— 结构化的数据库配置
   （`type`、`host`、`port`、`name`、`user`、`password`、`passwordFile`、
   `charset`、`unixSocket`、`dbFile`、`createLocally`）。
@@ -148,9 +152,11 @@ services.cloudreve = {
 
 ### `settings` 与 `database` 的关系
 
-`settings` 是覆盖 Cloudreve 所有配置的兜底入口，它是扁平的：键必须是
-`"Section.Key"`。值都是字符串；如果值里包含 `#` 或 `;`，模块会自动用反引号
-包裹，避免 Cloudreve 把后面的内容当注释。
+`settings` 是覆盖 Cloudreve 所有配置的兜底入口，直接对应 INI 结构：每个属性集
+就是一个 `[Section]`，里面的键就是该 section 的配置项。
+
+值的类型可以是字符串、整数、浮点数、布尔值或 null。如果值里包含 `#` 或 `;`，
+模块会自动用反引号包裹，避免 Cloudreve 把后面的内容当注释。
 
 专用的 `database.*` 配置会展开到 `[Database]` 段，且**优先级高于** `settings`
 中的同名键。常见场景用 `database.*`，其他情况用 `settings`。

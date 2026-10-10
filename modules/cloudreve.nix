@@ -25,28 +25,19 @@ let
   isPostgres = db.type == "postgres";
   isLocalMySql = isMySql && db.createLocally;
 
-  # Values containing the INI comment characters `#` or `;` have to be wrapped
-  # in backticks, otherwise Cloudreve treats the rest of the line as a comment.
+  # Cloudreve reads a standard INI file (`[Section]` headers, `Key = value`).
+  # It does however treat `#` and `;` as comment characters, so a value
+  # containing either of them has to be wrapped in backticks.
   # See https://docs.cloudreve.org/zh/overview/configure
-  quoteValue =
-    value: if lib.hasInfix "#" value || lib.hasInfix ";" value then "`${value}`" else value;
-
-  # `settings` is a flat set of `"Section.Key" = "value"` pairs, while
-  # `lib.generators.toINI` wants `{ Section = { Key = "value"; }; }`. Group the
-  # flat keys into that shape.
-  settingsToSections =
-    settings:
-    lib.mapAttrs (
-      _: keys:
-      lib.listToAttrs (
-        map (key: {
-          name = lib.concatStringsSep "." (lib.tail (lib.splitString "." key));
-          value = quoteValue settings.${key};
-        }) keys
-      )
-    ) (lib.groupBy (key: lib.head (lib.splitString "." key)) (lib.attrNames settings));
-
-  userSections = settingsToSections cfg.settings;
+  format = pkgs.formats.ini {
+    mkKeyValue =
+      key: value:
+      let
+        rendered = lib.generators.mkValueStringDefault { } value;
+      in
+      "${key}="
+      + (if lib.hasInfix "#" rendered || lib.hasInfix ";" rendered then "`${rendered}`" else rendered);
+  };
 
   databaseSection = {
     Type = db.type;
@@ -56,34 +47,34 @@ let
   }
   // optionalAttrs isMySql {
     Host = db.host;
-    Port = toString db.port;
+    Port = db.port;
     User = db.user;
     Name = db.name;
     Charset = db.charset;
-    UnixSocket = lib.boolToString db.unixSocket;
+    UnixSocket = db.unixSocket;
   }
   // optionalAttrs isPostgres {
     Host = db.host;
-    Port = toString db.port;
+    Port = db.port;
     User = db.user;
     Name = db.name;
   }
   // optionalAttrs (db.passwordFile == null && db.password != "") {
     # Secrets passed through `database.passwordFile` are injected through the
     # `CR_CONF_Database__Password` environment variable at runtime instead.
-    Password = quoteValue db.password;
+    Password = db.password;
   };
 
   # The dedicated `database` options win over overlapping keys in `settings`.
-  sections = userSections // {
-    Database = (userSections.Database or { }) // databaseSection;
+  sections = cfg.settings // {
+    Database = (cfg.settings.Database or { }) // databaseSection;
   };
 
-  configFile = pkgs.writeText "cloudreve.conf.ini" (lib.generators.toINI { } sections);
+  configFile = format.generate "cloudreve.conf.ini" sections;
 
   listenPort =
     let
-      listen = cfg.settings."System.Listen" or ":5212";
+      listen = lib.attrByPath [ "System" "Listen" ] ":5212" cfg.settings;
     in
     lib.toInt (lib.last (lib.splitString ":" listen));
 
@@ -125,24 +116,27 @@ in
     };
 
     settings = mkOption {
-      type = types.attrsOf types.str;
+      type = format.type;
       default = { };
       example = literalExpression ''
         {
-          "System.Listen" = ":5212";
-          "System.LogLevel" = "info";
-          "System.ProxyHeader" = "X-Forwarded-For";
-          "Redis.Server" = "127.0.0.1:6379";
+          System = {
+            Listen = ":5212";
+            LogLevel = "info";
+            ProxyHeader = "X-Forwarded-For";
+          };
+          Redis.Server = "127.0.0.1:6379";
         }
       '';
       description = ''
-        Free-form Cloudreve configuration (`conf.ini`). Keys must use the
-        `Section.Key` form, where `Section` and `Key` are the names of the INI
-        section and option as documented at
+        Free-form Cloudreve configuration (`conf.ini`), as INI sections. Each
+        attribute set is a `[Section]` and its keys are the options in it.
+        Section and option names are documented at
         <https://docs.cloudreve.org/zh/overview/configure>.
 
-        Every value is a string. Values that contain `#` or `;` are
-        automatically wrapped in backticks.
+        Values may be strings, integers, floats, booleans or null. Values
+        containing `#` or `;` are automatically wrapped in backticks, because
+        Cloudreve treats those as comment characters.
 
         Options set through {option}`services.cloudreve.database` take
         precedence over overlapping keys defined here.
@@ -277,13 +271,6 @@ in
 
   config = mkIf cfg.enable {
     assertions = [
-      {
-        assertion = lib.all (key: lib.hasInfix "." key) (lib.attrNames cfg.settings);
-        message = ''
-          services.cloudreve.settings keys must use the "Section.Key" form, e.g.
-          "System.Listen" = ":5212".
-        '';
-      }
       {
         assertion = !db.createLocally || isMySql;
         message = ''

@@ -70,8 +70,10 @@ binary instead, add the overlay and select it:
 services.cloudreve = {
   enable = true;
   settings = {
-    "System.Listen" = "127.0.0.1:5212";
-    "System.LogLevel" = "info";
+    System = {
+      Listen = "127.0.0.1:5212";
+      LogLevel = "info";
+    };
   };
 };
 ```
@@ -91,7 +93,7 @@ services.cloudreve = {
     enableACME = true;
     forceSSL = true;
   };
-  settings."System.ProxyHeader" = "X-Forwarded-For";
+  settings.System.ProxyHeader = "X-Forwarded-For";
 };
 ```
 
@@ -142,8 +144,10 @@ The full option tree lives in `modules/cloudreve.nix`. The highlights:
   from-source package).
 - `services.cloudreve.user` / `.group` — service account (default `cloudreve`).
 - `services.cloudreve.stateDir` — data directory (default `/var/lib/cloudreve`).
-- `services.cloudreve.settings` — free-form `conf.ini` values as an attrset of
-  strings, keyed by `"Section.Key"`, e.g. `"System.Listen" = ":5212"`.
+- `services.cloudreve.settings` — free-form `conf.ini` configuration as nested
+  INI sections, e.g. `settings.System.Listen = ":5212"` or
+  `settings.Redis.Server = "127.0.0.1:6379"`. Values may be strings, integers,
+  floats, booleans or null.
 - `services.cloudreve.database.*` — typed database configuration
   (`type`, `host`, `port`, `name`, `user`, `password`, `passwordFile`,
   `charset`, `unixSocket`, `dbFile`, `createLocally`).
@@ -152,10 +156,13 @@ The full option tree lives in `modules/cloudreve.nix`. The highlights:
 
 ### `settings` vs. `database`
 
-`settings` is the escape hatch for everything Cloudreve supports. It is flat:
-keys must be `"Section.Key"`. Values are strings; if a value contains `#` or `;`
-it is automatically wrapped in backticks so Cloudreve does not treat the rest of
-the line as a comment.
+`settings` is the escape hatch for everything Cloudreve supports. It maps onto
+the INI structure directly: each attribute set is a `[Section]` and its keys are
+the options in it.
+
+Values may be strings, integers, floats, booleans or null. If a value contains
+`#` or `;` it is automatically wrapped in backticks so Cloudreve does not treat
+the rest of the line as a comment.
 
 The dedicated `database.*` options expand into the `[Database]` section and
 **take precedence** over overlapping keys in `settings`. Use `database.*` for

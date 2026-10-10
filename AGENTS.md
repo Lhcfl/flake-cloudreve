@@ -52,12 +52,15 @@ LICENSE                    MIT license (packaging code)
 - The NixOS module's `package` option defaults to
   `pkgs.callPackage ../packages/cloudreve.nix { }` (the from-source package) so
   the module works without the overlay.
-- `services.cloudreve.settings` is deliberately `types.attrsOf types.str`, with
-  flat `"Section.Key"` keys (e.g. `"System.Listen" = ":5212"`). Do not change
-  this to a nested type without updating the READMEs and the option
-  documentation.
+- `services.cloudreve.settings` maps directly onto the INI structure: each
+  attribute set is a `[Section]` and its keys are the options in it (e.g.
+  `settings.System.Listen = ":5212"`). The option type is
+  `(pkgs.formats.ini { }).type`, so values may be strings, ints, floats, bools or
+  null. Do not change it back to flat dotted keys.
 - Values in `settings` that contain `#` or `;` are wrapped in backticks, because
-  Cloudreve treats those characters as INI comments.
+  Cloudreve treats those characters as INI comments. This is implemented as a
+  custom `mkKeyValue` on the `pkgs.formats.ini` format used to render
+  `conf.ini` (see the `format` binding), not as a post-processing pass.
 - `services.cloudreve.database.*` expands into the `[Database]` section and
   takes precedence over overlapping keys in `settings`.
 - The `database.passwordFile` secret is injected at runtime through the
@@ -174,7 +177,7 @@ let
       {
         nixpkgs.hostPlatform = "x86_64-linux";
         services.cloudreve.enable = true;
-        services.cloudreve.settings."System.Listen" = "127.0.0.1:5212";
+        services.cloudreve.settings.System.Listen = "127.0.0.1:5212";
         system.stateVersion = "25.11";
         fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
         boot.loader.grub.devices = [ "nodev" ];
