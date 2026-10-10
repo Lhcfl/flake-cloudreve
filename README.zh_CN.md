@@ -223,7 +223,9 @@ expected `got: sha256-...` 写入 job summary。把它填回对应字段再 push
 `checks.<system>.cloudreve-bin`。每个检查会在 `127.0.0.1:0` 上用临时 SQLite
 启动服务，并断言：
 
-- 二进制能运行且打印出预期版本（源码包还包括 commit）—— 验证 `ldflags` 注入；
+- 二进制能运行且打印出预期版本和短 commit —— 验证 `ldflags` 注入。commit 同时
+  检查格式（`Commit #<7 位十六进制>`）和具体值，因此能捕获「构建输入泄漏进 linker
+  flags」这类问题；
 - 二进制中存在 `assets/build/index.html`、`assets/build/version.json` 和
   `assets/build/sw.js` —— 即 Web 前端确实被嵌入。否则 `assets.zip` 出问题时
   构建依然会「成功」，只在运行时才暴露。
@@ -234,7 +236,7 @@ expected `got: sha256-...` 写入 job summary。把它填回对应字段再 push
 
 - `cloudreve-bin`：更新 `version`，并根据 release 的 `checksums.txt` 更新所有平台
   的 hash。
-- `cloudreve`：更新 `version`、`rev`、`commit`、固定的 `frontendRev` 以及源码
+- `cloudreve`：更新 `version`、`rev`、`lastCommit`、固定的 `frontendRev` 以及源码
   hash，然后用 [nix-update](https://github.com/Mic92/nix-update) 刷新 Go 的
   `vendorHash` 和 Yarn 的 `offlineCache` hash。
 
@@ -255,7 +257,7 @@ GitHub Actions to create and approve pull requests*，否则无法创建 PR。
 
 1. 在 <https://github.com/cloudreve/Cloudreve/releases> 选择新版本。
 2. `packages/cloudreve-bin.nix`：更新 `version` 和 `sources` 里的哈希。
-3. `packages/cloudreve.nix`：更新 `version`、`rev`、`commit`、`frontendRev`
+3. `packages/cloudreve.nix`：更新 `version`、`rev`、`lastCommit`、`frontendRev`
    （`assets` 子模块 revision）以及 fixed-output 哈希。
 4. 用 `nix build .#cloudreve-bin` 和 `nix build .#cloudreve` 验证。
 

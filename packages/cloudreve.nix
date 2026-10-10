@@ -15,7 +15,8 @@
   # Git tag/commit of cloudreve/Cloudreve to build.
   rev ? version,
   # Short commit of cloudreve/Cloudreve, injected into the binary.
-  commit ? "a8becb9",
+  # NOT named `commit`: `callPackage` would silently override it with pkgs.commit.
+  lastCommit ? "a8becb9",
   # Submodule revision of cloudreve/frontend pinned by the Cloudreve tag above.
   frontendRev ? "19da0fe1ecd40971fafa813983d769fdce41573c",
 }:
@@ -118,7 +119,7 @@ buildGoModule {
     "-s"
     "-w"
     "-X github.com/cloudreve/Cloudreve/v4/application/constants.BackendVersion=${version}"
-    "-X github.com/cloudreve/Cloudreve/v4/application/constants.LastCommit=${commit}"
+    "-X github.com/cloudreve/Cloudreve/v4/application/constants.LastCommit=${lastCommit}"
   ];
 
   preBuild = ''
@@ -134,7 +135,7 @@ buildGoModule {
 
   # Exposed so checks and tooling can assert on what was built.
   passthru = {
-    inherit commit frontendRev;
+    inherit lastCommit frontendRev;
     assets = assets;
   };
 

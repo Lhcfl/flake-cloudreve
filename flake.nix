@@ -45,7 +45,7 @@
               name,
               package,
               version,
-              commit ? null,
+              lastCommit ? null,
             }:
             pkgs.runCommand "${name}-smoke-test"
               {
@@ -79,9 +79,13 @@
                 timeout 30 "$binary" server -c "$PWD/conf.ini" > server.log 2>&1 || true
                 tail -5 server.log
 
-                grep -q -- "V${version}" server.log
-                ${lib.optionalString (commit != null) ''
-                  grep -q -- "Commit #${commit}" server.log
+                grep -qF -- "V${version}" server.log
+                ${lib.optionalString (lastCommit != null) ''
+                  # Assert both the shape and the exact value of the injected commit.
+                  # The shape check is what catches a wrong/unset build input leaking
+                  # into the linker flags (e.g. a store path instead of a short SHA).
+                  grep -qE -- "Commit #[0-9a-f]{7}([^0-9a-f]|$)" server.log
+                  grep -qF -- "Commit #${lastCommit}" server.log
                 ''}
 
                 touch $out
@@ -99,7 +103,7 @@
               name = "cloudreve";
               package = self'.packages.cloudreve;
               version = self'.packages.cloudreve.version;
-              commit = self'.packages.cloudreve.commit;
+              lastCommit = self'.packages.cloudreve.lastCommit;
             };
 
             cloudreve-bin = smokeTest {

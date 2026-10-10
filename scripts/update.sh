@@ -71,10 +71,10 @@ if [[ "$target" == "all" || "$target" == "src" ]]; then
   # not know about it, so resolve and patch the revision and its source hash
   # before letting nix-update handle the rest.
   frontend_rev="$(gh_api "https://api.github.com/repos/$repo/contents/assets?ref=$version" | jq -r .sha)"
-  commit="$(gh_api "https://api.github.com/repos/$repo/commits/$version" | jq -r .sha)"
-  commit="${commit:0:7}"
+  last_commit="$(gh_api "https://api.github.com/repos/$repo/commits/$version" | jq -r .sha)"
+  last_commit="${last_commit:0:7}"
 
-  echo "==> cloudreve (from source): frontend $frontend_rev, commit $commit"
+  echo "==> cloudreve (from source): frontend $frontend_rev, commit $last_commit"
 
   cloudreve_hash="$(nix-prefetch-url --unpack "https://github.com/$repo/archive/refs/tags/$version.tar.gz" | tail -n1)"
   cloudreve_sri="$(nix-hash --to-sri --type sha256 "$cloudreve_hash")"
@@ -84,7 +84,7 @@ if [[ "$target" == "all" || "$target" == "src" ]]; then
   file="packages/cloudreve.nix"
 
   sed -i -E "s/^(  version \? \")[^\"]*(\",)$/\1$version\2/" "$file"
-  sed -i -E "s/^(  commit \? \")[^\"]*(\",)$/\1$commit\2/" "$file"
+  sed -i -E "s/^(  lastCommit \? \")[^\"]*(\",)$/\1$last_commit\2/" "$file"
   sed -i -E "s/^(  frontendRev \? \")[^\"]*(\",)$/\1$frontend_rev\2/" "$file"
 
   # Replace the hash that follows the given marker line (inside a fetchFromGitHub

@@ -239,7 +239,9 @@ is cached.
 temporary SQLite database on `127.0.0.1:0` and asserts that:
 
 - the binary runs and prints the expected version (and, for the from-source
-  package, commit) — this validates the `ldflags` injection;
+  package, short commit) — this validates the `ldflags` injection. The commit is
+  checked both by shape (`Commit #<7 hex chars>`) and exact value, so a build
+  input leaking into the linker flags is caught;
 - `assets/build/index.html`, `assets/build/version.json` and
   `assets/build/sw.js` are present in the binary — i.e. the web frontend was
   actually embedded. Without this a broken `assets.zip` would still produce a
@@ -252,7 +254,7 @@ release:
 
 - `cloudreve-bin`: bumps `version` and all per-platform hashes from the
   release's `checksums.txt`.
-- `cloudreve`: bumps `version`, `rev`, `commit`, the pinned `frontendRev` and
+- `cloudreve`: bumps `version`, `rev`, `lastCommit`, the pinned `frontendRev` and
   the source hashes, then uses
   [nix-update](https://github.com/Mic92/nix-update) to refresh the Go
   `vendorHash` and the Yarn `offlineCache` hash.
@@ -275,7 +277,7 @@ requests* must be enabled for the PR to be created.
 
 1. Pick a new tag from <https://github.com/cloudreve/Cloudreve/releases>.
 2. `packages/cloudreve-bin.nix`: update `version` and the `sources` hashes.
-3. `packages/cloudreve.nix`: update `version`, `rev`, `commit`, `frontendRev`
+3. `packages/cloudreve.nix`: update `version`, `rev`, `lastCommit`, `frontendRev`
    (the `assets` submodule revision) and the fixed-output hashes.
 4. Verify with `nix build .#cloudreve-bin` and `nix build .#cloudreve`.
 

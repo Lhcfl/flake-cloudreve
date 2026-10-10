@@ -71,6 +71,13 @@ LICENSE                    MIT license (packaging code)
   `frontendRev` to the submodule revision, otherwise the embedded frontend will
   not match the backend.
 - Keep `README.md` and `README.zh_CN.md` content in sync when changing options.
+- **Beware `callPackage` autos when naming derivation arguments.** The packages
+  here are instantiated with `pkgs.callPackage`, which fills in any argument that
+  shares a name with an attribute of `pkgs`. This already caused a bug: an
+  argument named `commit` was silently replaced by `pkgs.commit` (a store path),
+  which got interpolated into the Go linker flags. Prefer specific names
+  (`lastCommit`, `frontendRev`, ...) and check `pkgs ? <name>` before adding a
+  new argument.
 
 ## Fixed-output hashes for the from-source build
 
@@ -133,11 +140,17 @@ $ nix flake check -L
 ```
 
 The smoke tests start the server against a temporary SQLite database on
-`127.0.0.1:0`, assert the printed version/commit (validating the `ldflags`) and
+`127.0.0.1:0`, assert the printed version and short commit (validating the
+`ldflags`) and
 assert that `assets/build/index.html`, `version.json` and `sw.js` are present in
 the binary (validating that the web frontend was embedded). Keep both checks
 working when changing the build; the embed assertion is what caught a broken
 `assets.zip` layout.
+
+The commit is asserted both by shape (`Commit #<7 hex chars>`) and by exact
+value. Asserting only the exact value is useless if the expected value is read
+back from the same (possibly wrong) build input — that is how a store path
+ended up linked into the binary without any check noticing.
 
 Build the packages (the binary package is quick; the from-source package is
 heavy):
@@ -201,7 +214,7 @@ name used by CI.
 - `cloudreve-bin`: `version` plus every per-platform hash, read from the
   release's `checksums.txt` (nix-update can only prefetch the hash of the
   system it runs on, hence the checksums approach).
-- `cloudreve`: `version`, `rev`, `commit`, the pinned `frontendRev` and the
+- `cloudreve`: `version`, `rev`, `lastCommit`, the pinned `frontendRev` and the
   source hashes, followed by `nix-update cloudreve --flake --version=skip` to
   refresh `vendorHash` and `offlineCache`.
 
@@ -215,7 +228,7 @@ enabled for the PR to be created.
 
 1. Choose a new tag at <https://github.com/cloudreve/Cloudreve/releases>.
 2. `packages/cloudreve-bin.nix`: update `version` and every entry in `sources`.
-3. `packages/cloudreve.nix`: update `version`, `rev`, `commit`, `frontendRev`
+3. `packages/cloudreve.nix`: update `version`, `rev`, `lastCommit`, `frontendRev`
    and the fixed-output hashes.
 4. Re-run `nix build .#cloudreve-bin`, `nix build .#cloudreve` and the module
    evaluation above.
