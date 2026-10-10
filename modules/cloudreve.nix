@@ -31,24 +31,20 @@ let
   quoteValue =
     value: if lib.hasInfix "#" value || lib.hasInfix ";" value then "`${value}`" else value;
 
-  # `settings` is a flat set of `"Section.Key" = "value"` pairs. Group the keys
-  # into nested sections so that they can be serialized to INI.
+  # `settings` is a flat set of `"Section.Key" = "value"` pairs, while
+  # `lib.generators.toINI` wants `{ Section = { Key = "value"; }; }`. Group the
+  # flat keys into that shape.
   settingsToSections =
     settings:
-    builtins.foldl' (
-      acc: key:
-      let
-        parts = lib.splitString "." key;
-        section = builtins.head parts;
-        option = lib.concatStringsSep "." (builtins.tail parts);
-      in
-      acc
-      // {
-        ${section} = (acc.${section} or { }) // {
-          ${option} = quoteValue settings.${key};
-        };
-      }
-    ) { } (builtins.attrNames settings);
+    lib.mapAttrs (
+      _: keys:
+      lib.listToAttrs (
+        map (key: {
+          name = lib.concatStringsSep "." (lib.tail (lib.splitString "." key));
+          value = quoteValue settings.${key};
+        }) keys
+      )
+    ) (lib.groupBy (key: lib.head (lib.splitString "." key)) (lib.attrNames settings));
 
   userSections = settingsToSections cfg.settings;
 
