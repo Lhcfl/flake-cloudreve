@@ -37,6 +37,10 @@ in
   options.services.cloudreve = {
     enable = mkEnableOption "Cloudreve, a self-hosted file management and sharing system";
 
+    enableExtraPackages = mkEnableOption ''
+      Enable ffmpeg, vips, and etc for thumbnail generation
+    '';
+
     package = mkOption {
       type = types.package;
       default = pkgs.callPackage ../packages/cloudreve.nix { };
@@ -164,12 +168,23 @@ in
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
 
+      path = lib.mkIf (cfg.enableExtraPackages) (
+        with pkgs;
+        [
+          ffmpeg
+          vips
+          libreoffice
+          libraw
+        ]
+      );
+
+      script = "${lib.getExe cfg.package} server -w -c ${ini.generate "conf.ini" cfg.settings}";
+
       serviceConfig = {
         Type = "simple";
         User = cfg.user;
         Group = cfg.group;
         WorkingDirectory = cfg.stateDir;
-        ExecStart = "${lib.getExe cfg.package} server -w -c ${ini.generate "conf.ini" cfg.settings}";
         Restart = "on-failure";
         RestartSec = 10;
         TimeoutStopSec = 60;
