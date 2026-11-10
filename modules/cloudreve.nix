@@ -212,6 +212,9 @@ in
       virtualHosts.${cfg.nginx.host} = {
         enableACME = cfg.nginx.enableACME;
         forceSSL = cfg.nginx.forceSSL;
+        extraConfig = ''
+          client_max_body_size 50M;
+        '';
         locations."/" = lib.mkMerge [
           (lib.mkIf (cfg.port != null) {
             proxyPass = "http://127.0.0.1:${toString cfg.port}";
